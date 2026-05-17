@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+.eggs/
+build/
+dist/
+*.egg
+
+# Throughline state
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+.throughline/
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Secrets — never commit
+keys/
+secrets/
+*.pem
+*.key
