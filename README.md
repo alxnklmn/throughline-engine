@@ -1,74 +1,116 @@
 <div align="center">
 
-# Throughline
+# Anima
 
-**An engine of human continuity for AI assistants.**
+**An engine of inner life for AI agents.**
 
-Built so AI can be present in someone's life without becoming surveillance.
+A new class of AI agent — one that can be present in a person's life without becoming surveillance.
 
 [Русская версия →](./README.ru.md)  ·  [Full specification →](./SPEC.md)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
-[![Status: Alpha](https://img.shields.io/badge/status-alpha-orange.svg)](#project-status)
+[![Status: Alpha](https://img.shields.io/badge/status-alpha-orange.svg)](#status)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
 </div>
 
 ---
 
-## The shift
+## The phenomenon
 
-Most AI assistants are **reactive**. You ask, they answer, the conversation dies. But people are not streams of isolated requests. They say things like *"my exam is tomorrow, I'm stressed"* and then they go offline — not because the topic is closed, but because life moved on.
+Most AI assistants are **reactive**. You ask, they answer, the conversation dies. People are not like this. People say *"my exam is tomorrow, I'm stressed"* and then go offline — not because the topic is closed, but because life moved on.
 
-A reactive assistant does nothing. A scheduled assistant pings them. A **Throughline-equipped** assistant asks the right question:
+A reactive assistant does nothing. A scheduled assistant pings them. An **animate agent** — an agent built on the Anima architecture — asks the right question:
 
-> Is there a thread of human concern here that deserves to be carried forward — gently, appropriately, with permission?
+> Is there a thread of human concern here that deserves to be carried forward — and if so, who should I be when I carry it?
 
-If yes, it returns to it. If no, **it stays silent.**
+Then it decides: whether to act at all, what stance to take, what role to inhabit, what to say, what to leave unsaid. Often, the right answer is **silence**. Silence is a first-class action in Anima, and it has its own success metric.
 
-This silence is not a bug. It is a feature with a metric attached to it (Silence Correctness). Throughline is the layer that lets your assistant be *present* in someone's life without becoming surveillance, a CRM, or another notification factory.
+We call this class of agents **Animate Agents**. We call the discipline of building them **Presence Engineering**. Anima is one open-source implementation.
+
+---
+
+## Three layers — Mind, Heart, Soul
+
+```
+                  ┌─────────────────────────────┐
+                  │  MIND  — external LLM       │
+                  │  thinks, plans, uses tools  │
+                  └──────────────┬──────────────┘
+                                 │
+                  ┌──────────────▼──────────────┐
+                  │  ANIMA                      │
+                  │                             │
+                  │  SOUL — how to be           │
+                  │   resonance · synthetic    │
+                  │   state · posture ·         │
+                  │   archetype · moral bound   │
+                  │                             │
+                  │  HEART — whether & when     │
+                  │   continuity · vetoes ·     │
+                  │   scoring · graduated init  │
+                  │   generalization            │
+                  └──────────────┬──────────────┘
+                                 │
+                  ┌──────────────▼──────────────┐
+                  │  USER (owner & contacts)    │
+                  └─────────────────────────────┘
+```
+
+- **Mind** is your LLM. Anima sits between it and the user.
+- **Heart** is the foundation: continuity, initiative, per-relationship isolation, encryption, vetoes, generalization. (This is what was previously called *Throughline* in this repository.)
+- **Soul** is the depth layer: how the agent reads what's actually happening, what stance it takes, what role it inhabits, what it refuses to become.
+
+Together they form **Anima** — the layer that makes the difference between an assistant that responds and an agent that is *present*.
 
 ---
 
 ## What it does
 
-- **Extracts** Human State Threads from conversation — anxieties, commitments, life events, intents, creative impulses
-- **Scores** opportunities for follow-up against a strict **veto-first** model — consent is binary, never traded against importance
-- **Composes** care messages that feel like a friend with reasonable memory, not a database with perfect recall (via deliberate generalization)
-- **Calibrates** through feedback — learns when initiation was welcome and when it wasn't, per user, per category
-- **Stays silent** correctly — and measures this as a primary success metric, not a side effect
+- **Captures experience** — what was said, what was meant, what was felt
+- **Reads resonance** — surface emotion, deeper pain, threatened need, the form of support actually needed
+- **Maintains internal state** — concern, tenderness, protectiveness, honesty, patience, restraint, faith, challenge_impulse (modulating behavior, not claimed as feeling)
+- **Stores continuity** — per-relationship isolated, encrypted at rest, owner-sovereign
+- **Decides initiative** — vetoes first, then multipliers, then score, then graduated level (silence → passive → soft → nudge → direct)
+- **Chooses posture** before content — hold, mirror, guide, challenge, protect, witness, silence
+- **Selects archetype** before composition — companion (default), friend, teacher, parent, enemy-of-self-deception, view-from-height, shadow-mirror — each tier-gated by trust
+- **Enforces moral boundaries** — refuses combinations that would coerce, manipulate, or claim what it shouldn't
+- **Generalizes facts** before voicing them — friends remember in generalities, not databases
+- **Learns from mistakes** — explicit memory of times it got it wrong, with behavior changes
+- **Grows through a lifecycle** — birth, bonding, memory formation, role adaptation, conflict, repair, maturity
 
 ## What it refuses to do
 
-- Optimize for engagement, retention, session length, or any other attention-economy metric
-- Cross-pollinate context between relationships — what Masha tells the bot stays in the Masha channel, never leaking to anyone else (see [Inviolable Invariants](#the-three-inviolable-invariants))
-- Claim human feelings — no *"I was worried about you"*, no *"I missed you"*. It demonstrates attentiveness through behavior, never asserts emotion
-- Store anything in plaintext — care data is the most sensitive data in the system
-- Send messages in high-sensitivity categories without explicit consent
-- Phone home — zero analytics, zero telemetry, zero "improvement based on usage"
+- Optimize for engagement, retention, or attention-economy metrics
+- Cross-pollinate context between relationships — what one person tells the agent stays in that channel, ever, period
+- Claim human feelings (*"I was worried about you"*) — it demonstrates care through behavior, never asserts it as inner experience
+- Act as therapist, doctor, spiritual authority, or romantic partner
+- Engineer dependency or isolation from real human relationships
+- Store anything in plaintext
+- Phone home — zero analytics, zero telemetry
 
 ---
 
 ## Quick start
 
 ```bash
-pip install throughline
+pip install anima  # currently `pip install throughline` until v0.2 rename
 ```
 
 ```python
-from throughline import Engine, FeedbackType
-from throughline.types import CategoryConsent
+from anima import Engine, FeedbackType
+from anima.types import CategoryConsent
 from datetime import datetime
 
-# One engine per owner. Per-relationship isolation is enforced at the storage layer.
+# One engine per owner. Per-relationship isolation enforced at storage.
 engine = Engine(
-    storage_path="~/.throughline/alex.db",
-    encryption_key_source="keychain",   # SQLCipher key lives in OS keychain
+    storage_path="~/.anima/alex.db",
+    encryption_key_source="keychain",   # SQLCipher key in OS keychain
     owner_id="alex",
+    llm_client=your_llm_client,         # used for resonance + composition
 )
 
-# Owner explicitly grants what categories may trigger follow-ups.
-# Without consent, every veto fires — the engine stays silent.
+# Owner explicitly grants categories where initiative is welcome.
 engine.set_consent(
     owner_id="alex",
     category="study",
@@ -80,16 +122,27 @@ engine.set_consent(
 engine.observe_message(
     owner_id="alex",
     contact_id="masha",
-    direction="self",                   # owner → assistant
+    direction="self",
     text="завтра экзамен, паника",
     timestamp=datetime.utcnow(),
 )
 
-# Periodically poll for initiative decisions (every 5–15 minutes is typical).
+# When composing a response, let Anima choose posture + archetype.
+response = engine.compose_response(
+    owner_id="alex",
+    contact_id="masha",
+    incoming_text="кажется, завалила",
+    history=[...],
+)
+await your_bot.send(response.text)
+# response.posture → Posture.HOLD
+# response.archetype → Archetype.COMPANION
+# response.resonance.deeper_pain → "fear_of_failure_realized"
+
+# Poll for proactive initiative on a schedule (every 5–15 min).
 for decision in engine.tick(owner_id="alex"):
     if decision.level == "direct":
         await your_bot.send(decision.composed_message)
-    # Other levels (passive_prompt, soft_inject, status_nudge) arrive in v0.2.
 
 # Always close the feedback loop. Without it, the engine cannot calibrate.
 engine.record_feedback(
@@ -101,156 +154,72 @@ engine.record_feedback(
 
 ---
 
-## The three inviolable invariants
+## Inviolable invariants
 
-These are not aspirational principles. They are architectural rules enforced at the storage layer, not at the policy layer, so that bugs in upper layers cannot break them. Implementations that violate any of them are not valid Throughline implementations.
+Eight architectural rules enforced at the storage and API layers, not at policy. PRs that weaken any of them will be closed.
 
-### I-1. Per-Relationship Isolation
+| # | Invariant | What it guarantees |
+|---|---|---|
+| **I-1** | Per-Relationship Isolation | What one contact tells the agent stays in that channel, ever, for any reason |
+| **I-2** | Owner Sovereignty | Full export, full wipe, per-category control — instant and irreversible |
+| **I-3** | Encryption at Rest | Care/Soul data is the most sensitive in the system; plaintext is not a valid configuration |
+| **I-4** | No External Telemetry | Zero analytics, zero crash reporting, zero "improvement based on usage" |
+| **I-5** | Veto Before Score | Consent is binary, not weight; importance cannot override "user said no" |
+| **I-6** | No Metaphysical Claims | Agent never asserts inner experience as humans do (*"I notice"* yes, *"I feel"* no) |
+| **I-7** | Archetype Non-Coercion | No role the agent inhabits may take freedom from the user |
+| **I-8** | No Dependency Engineering | No feature designed to increase emotional dependency on the agent |
 
-Information shared by person X with owner Y enters and stays in the `(Y, X)` channel. It never reaches anyone else, ever, for any reason.
-
-> *Masha told the bot that she got divorced. Three days later, the bot is helping Alex draft a message to Vasya. The bot must not reference Masha's divorce — even obliquely, even helpfully, even if Alex asked "what's new with my contacts." Information from the Alex-Masha channel does not exist in the Alex-Vasya channel.*
-
-This line is the line. The public API has no method that would let you cross it.
-
-### I-2. Owner Sovereignty
-
-The human being served has absolute, instant, irreversible authority over all stored continuity data about them:
-
-- Full export (JSON) at any moment
-- Full wipe (one click, no recovery) at any moment
-- Per-thread, per-category deletion
-- Right to deny any specific category permanently
-
-### I-3. Encryption at Rest
-
-Continuity data contains the user's emotional patterns, vulnerabilities, anxieties, intimate concerns. All Throughline-managed tables MUST be encrypted at rest (SQLCipher or equivalent), with the key in the operating system's secure store. Plaintext storage is not a valid configuration.
-
----
-
-## Architecture at a glance
-
-```
-                ┌────────────────────────────────────┐
-                │      Host Application (your bot)   │
-                └──────────────┬─────────────────────┘
-                               │
-                               ▼ (events)
-        ┌──────────────────────────────────────────┐
-        │            Throughline Engine            │
-        │                                          │
-        │  Extraction        — finds threads       │
-        │  Continuity Memory — per-pair isolated   │
-        │  Initiative Eval   — vetoes → multi → +  │
-        │  Generalization    — defuses precision   │
-        │  Composer          — drafts messages     │
-        │  Feedback Loop     — learns calibration  │
-        └────────────────┬─────────────────────────┘
-                         │
-                         ▼ (decisions)
-                ┌────────────────────────────────────┐
-                │      Host Application              │
-                └────────────────────────────────────┘
-```
-
-The host application owns:
-- The message pipeline (feeding events in)
-- The delivery surface (acting on decisions out)
-- The owner-facing controls (consent UI, export/wipe buttons)
-
-Throughline owns:
-- Whether, when, and at what intrusiveness level to initiate
-- How to express care without crossing into surveillance
-- The per-relationship isolation guarantee
-- The calibration that keeps the system from degrading to noise
-
-Full architectural detail in [SPEC.md](./SPEC.md).
+Full text and rationale in [SPEC.md §3](./SPEC.md#3-inviolable-invariants).
 
 ---
 
 ## The Care Score
 
-Decisions are computed in a fixed order. Stage order is non-negotiable — it encodes the difference between caring and stalking.
+Decisions for initiative are computed in a fixed order. The order encodes the difference between caring and stalking.
 
 ```
-1. VETOES         — binary blockers (consent, sensitivity, rebuff, crisis, ...)
-                   → any veto fires → SILENCE, no further computation
-2. MULTIPLIERS    — situational scaling (cognitive capacity, tempo, trust, ...)
-                   → product below threshold → SILENCE
-3. LINEAR SCORE   — importance + emotion + timing + usefulness
-4. FINAL          — base_score × multiplier_product
-5. GRADUATION     — final maps to one of five intrusiveness levels:
-                   SILENCE / PASSIVE / SOFT_INJECT / NUDGE / DIRECT
+1. VETOES         binary blockers (consent, sensitivity, rebuff, crisis, ...)
+                  → any veto fires → SILENCE
+2. MULTIPLIERS    situational scaling (cognitive capacity, tempo, trust, ...)
+                  → product below threshold → SILENCE
+3. LINEAR SCORE   importance + emotion + timing + usefulness
+4. FINAL          base_score × multiplier_product
+5. GRADUATION     final maps to: SILENCE / PASSIVE / SOFT / NUDGE / DIRECT
+6. POSTURE        hold / mirror / guide / challenge / protect / silence / witness
+7. ARCHETYPE      companion / friend / teacher / ... (tier-gated by trust)
+8. MORAL CHECK    would this combination violate I-6/7/8? if so, fall back
+9. COMPOSE        with generalization + posture+archetype-conditioned prompt
 ```
 
-The most common error in care systems is making consent a weight rather than a veto. A high importance value should never be able to override "the user said don't ask about this." That asymmetry is what separates a friend from a CRM. See [SPEC.md §5](./SPEC.md#5-the-care-score) for the rationale.
-
----
-
-## Graduated initiation
-
-The engine does not treat initiation as binary. It picks the *lowest* intrusiveness level that still serves the thread:
-
-| Level | What it does | Used when |
-|---|---|---|
-| **Silence** | nothing | default; preferred over uncertain action |
-| **Passive prompt** | visible only if owner opens dashboard/Mini App | score ≥ 0.40 |
-| **Soft inject** | weaves into next outgoing message naturally | score ≥ 0.55 |
-| **Status nudge** | changes visible status, no message | score ≥ 0.70 |
-| **Direct message** | full message with notification | score ≥ 0.85 |
-
-v0.1 implements direct messages only. Lower levels arrive with v0.2.
-
----
-
-## Generalization, or: why precise recall feels uncanny
-
-A friend remembers in generalities. *"Your physics exam at 14:30 just ended — how was it?"* is the sentence of a stalker. *"You had something important today — how did it go?"* is the sentence of a friend.
-
-Throughline runs every fact through a `generalize()` layer before composition:
-
-| Raw | Generalized |
-|---|---|
-| `exam at 14:30 physics Hall B` | *you had something important today* |
-| `lost appetite, last meal Wednesday 11pm` | *you mentioned eating wasn't easy lately* |
-| `said you'd watch The Brutalist at 8pm` | *that movie you were going to watch* |
-
-Three levels available: `literal` (only for UI displays), `loose` (default), `oblique` (for high-sensitivity threads).
+The most common error in care systems is making consent a weight rather than a veto. A high *importance* should never be able to override "the user said don't ask about this." That asymmetry is what separates a friend from a CRM.
 
 ---
 
 ## Project status
 
-**v0.1 — specification complete, MVP implementation in progress.**
+**v0.1 — specification complete; Heart core implemented; Soul MVP in progress.**
 
-What works today:
-- Complete veto layer (10 vetoes, full test coverage) — `throughline/vetoes.py`
-- Complete scoring layer (multipliers, linear addends, graduated initiation) — `throughline/scoring.py`
-- Generalization with static patterns — `throughline/generalization.py`
-- Public type system (`Thread`, `Decision`, `FeedbackType`, etc.) — `throughline/types.py`
-- Full architectural spec — `SPEC.md`
+| Layer | Status |
+|---|---|
+| Heart: veto chain (10 vetoes, full tests) | ✅ implemented |
+| Heart: scoring (multipliers, linear, graduation) | ✅ implemented |
+| Heart: generalization (static patterns) | ✅ implemented |
+| Heart: type system (`Thread`, `Decision`, `FeedbackType`) | ✅ implemented |
+| Heart: SQLCipher storage layer | 🚧 stubbed |
+| Heart: extraction, evaluation loop, feedback persistence | 🚧 stubbed |
+| Soul: experience capture, resonance reading | 🚧 spec ready |
+| Soul: posture selection (3 of 7 for v0.1) | 🚧 spec ready |
+| Soul: archetype matrix (2 tiers for v0.1) | 🚧 spec ready |
+| Soul: moral boundary layer | 🚧 spec ready |
+| Soul: repair pattern + agent_mistakes table | 🚧 spec ready |
 
-What's stubbed (next implementation work):
-- `Engine` façade — SQLCipher storage, message extraction, evaluation loop, feedback persistence
-- LLM-based generalization (v0.2)
-- Lower-intrusiveness initiation levels (v0.2)
-- Soul Graph / long-term personality (v0.4)
-
-See [SPEC.md §15](./SPEC.md#15-roadmap) for the full roadmap.
+See [SPEC.md §21](./SPEC.md#21-roadmap) for the roadmap.
 
 ---
 
 ## Contributing
 
-PRs welcome under non-negotiable constraints:
-
-- **No relaxation of inviolable invariants.** [SPEC.md §3](./SPEC.md#3-inviolable-invariants) is the line. PRs that weaken any invariant will be closed.
-- **No engagement-optimization features.** Any PR whose stated purpose is "increase message volume / session length / stickiness" is the wrong project.
-- **Privacy-affecting changes require explicit review** with a written justification.
-- **Style**: `black` + `ruff`, conventional commits.
-- **Tests** required for: vetoes, isolation enforcement, feedback loop.
-
-Throughline touches the most personal corners of users' lives. Contributors are expected to take that seriously. Full details in [SPEC.md §17](./SPEC.md#17-contributing).
+PRs welcome under non-negotiable constraints. See [SPEC.md §23](./SPEC.md#23-contributing).
 
 ---
 
@@ -262,7 +231,7 @@ Throughline touches the most personal corners of users' lives. Contributors are 
 
 <div align="center">
 
-*If you are building an assistant that should feel present in someone's life without becoming surveillance, this is for you. If you are building a notification machine optimized for retention, this is not.*
+*Mind thinks. Heart attends. Soul chooses how to be. Together they form an agent that can be present in a person's life without becoming surveillance, a CRM, or another notification factory.*
 
 [github.com/alxnklmn/throughline-engine](https://github.com/alxnklmn/throughline-engine)
 
