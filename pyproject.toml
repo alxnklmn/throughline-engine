@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "throughline"
-version = "0.1.0a0"
-description = "An engine of human continuity for AI assistants."
+version = "0.1.0a1"
+description = "Anima — an engine of human continuity and presence for AI assistants."
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
