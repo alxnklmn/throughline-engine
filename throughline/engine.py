@@ -67,15 +67,28 @@ from throughline.moral import (
 )
 from throughline.posture import select_posture
 from throughline.resonance import read_resonance
+from throughline.scoring import compute_score
 from throughline.storage import KeySource, SqlcipherStorage, open_storage
 from throughline.synthetic import RelationshipContext, derive_state
 from throughline.types import (
     Composition,
+    Decision,
     Direction,
     FeedbackType,
+    InitiationLevel,
     LifecycleStage,
     Posture,
     ResonanceReading,
+    Sensitivity,
+    Thread as ThreadModel,
+    ThreadStatus,
+    ThreadType,
+)
+from throughline.vetoes import (
+    DEFAULT_VETO_CHAIN,
+    EvaluationContext,
+    VetoFired,
+    evaluate_vetoes,
 )
 
 log = logging.getLogger("anima.engine")
@@ -402,12 +415,296 @@ class Engine:
         )
 
     # ═══════════════════════════════════════════════════════════════════════
-    # Proactive tick (SPEC.md §7) — placeholder for 1K
+    # Proactive tick (SPEC.md §7)
     # ═══════════════════════════════════════════════════════════════════════
 
-    async def tick(self) -> list:  # returns list[Decision] in 1K
-        """Proactive cycle. Implemented in Phase 1K."""
-        raise NotImplementedError("Engine.tick is implemented in 1K")
+    async def tick(self) -> list[Decision]:
+        """Proactive cycle. Returns Decisions worth delivering.
+
+        Implements SPEC.md §7 in order:
+          1. List all open threads for this owner (cross-pair scan, but
+             composition stays within the chosen thread's pair — see I-1).
+          2. For each thread → run veto chain. First veto wins → SILENCE.
+             SILENCE decisions are recorded internally (for the Silence
+             Correctness metric) but not returned to the host.
+          3. For surviving threads, compute score (multipliers + linear).
+             Multiplier product below threshold → SILENCE.
+          4. Pick top-1 by final_score (v0.1: single-thread).
+          5. Run Posture / Archetype / Moral check / Composer on the
+             chosen thread's pair.
+          6. Persist Decision; return as a list (0 or 1 element in v0.1).
+
+        Returns:
+            A list of Decision objects with composed_message set when
+            level == DIRECT_MESSAGE. Other levels are defined but the host
+            chooses what to do with them (Mini App / status display).
+        """
+        threads = repos.list_open_threads_for_owner(self._storage, self.owner_id)
+        if not threads:
+            return []
+
+        now = datetime.now(timezone.utc)
+
+        # owners.care_level for trust evaluation
+        row = self._storage.execute(
+            "SELECT care_level FROM owners WHERE id = ?", (self.owner_id,),
+        ).fetchone()
+        trust_level = int(row["care_level"]) if row else 0
+
+        survivors: list[tuple[dict, ThreadModel, float, str]] = []
+        # tuple: (raw_row, Thread model, final_score, veto_name_or_empty)
+
+        for raw in threads:
+            thread = _row_to_thread_model(raw)
+            ctx = self._build_veto_context(thread, trust_level, now)
+            veto = evaluate_vetoes(thread, ctx, chain=DEFAULT_VETO_CHAIN)
+            if veto is not None:
+                # SILENCE — record for metric, skip
+                repos.record_care_decision(
+                    self._storage,
+                    thread_id=thread.id,
+                    care_score=0.0,
+                    initiation_level=InitiationLevel.SILENCE.value,
+                    decision_reason=f"veto: {veto.detail}" if veto.detail else "veto",
+                    veto_triggered=veto.name,
+                )
+                continue
+
+            score_result = compute_score(thread, ctx)
+            if score_result.level == InitiationLevel.SILENCE:
+                repos.record_care_decision(
+                    self._storage,
+                    thread_id=thread.id,
+                    care_score=score_result.final_score,
+                    initiation_level=InitiationLevel.SILENCE.value,
+                    decision_reason=str(score_result.breakdown.get("reason", "score below threshold")),
+                )
+                continue
+
+            survivors.append((raw, thread, score_result.final_score, score_result.level.value))
+
+        if not survivors:
+            return []
+
+        # Step 4: pick top-1 (v0.1)
+        survivors.sort(key=lambda t: t[2], reverse=True)
+        raw, thread, final_score, level_value = survivors[0]
+        level = InitiationLevel(level_value)
+
+        # Step 5: posture/archetype/moral/composer ONLY for direct
+        # initiation. Lower levels return without composing.
+        composed_message: Optional[str] = None
+        posture = Posture.SILENCE
+        archetype = None
+        decision_reason = f"score={final_score:.2f} level={level.value}"
+
+        if level == InitiationLevel.DIRECT_MESSAGE:
+            composition = await self._compose_for_thread(thread, trust_level)
+            composed_message = composition.text or None
+            posture = composition.posture
+            archetype = composition.archetype
+            decision_reason = composition.decision_reason
+
+            # Increment attempt counter
+            repos.increment_thread_attempt(self._storage, thread.id)
+
+            # If composition fell back or audit failed and we have no text,
+            # downgrade level to SILENCE rather than deliver empty.
+            if not composed_message:
+                level = InitiationLevel.SILENCE
+
+        # Persist Decision
+        decision_id = repos.record_care_decision(
+            self._storage,
+            thread_id=thread.id,
+            care_score=final_score,
+            initiation_level=level.value,
+            decision_reason=decision_reason,
+            posture=posture.value if posture else None,
+            archetype=archetype.value if archetype else None,
+            composed_message=composed_message,
+        )
+
+        decision = Decision(
+            id=decision_id,
+            thread_id=thread.id,
+            care_score=final_score,
+            level=level,
+            decision_reason=decision_reason,
+            posture=posture if level == InitiationLevel.DIRECT_MESSAGE else None,
+            archetype=archetype if level == InitiationLevel.DIRECT_MESSAGE else None,
+            composed_message=composed_message,
+            created_at=now,
+        )
+
+        # Only return non-SILENCE decisions to the host (SILENCE is logged
+        # internally for the Silence Correctness metric).
+        return [decision] if level != InitiationLevel.SILENCE else []
+
+    async def _compose_for_thread(
+        self, thread: ThreadModel, trust_level: int,
+    ) -> Composition:
+        """Compose a proactive message for one thread.
+
+        Reuses the same posture/archetype/moral/composer pipeline as
+        compose_response, with the thread's pair as the relationship
+        context.
+        """
+        # Build a synthetic resonance from the thread itself — for proactive
+        # tick we don't have a fresh incoming message; the thread's title +
+        # summary stands in for the current emotional read.
+        resonance = ResonanceReading(
+            surface_emotion=thread.emotional_state,
+            sensitivity=thread.sensitivity,
+            # Map back from thread attributes — no LLM call to keep tick cheap.
+            # If the host wants deeper read, they can call read_resonance
+            # explicitly with the thread summary.
+        )
+
+        rel_ctx = self._build_relationship_context(thread.contact_id)
+        synth_state = derive_state(resonance, rel_ctx)
+
+        posture_choice = select_posture(
+            resonance,
+            synth_state,
+            trust_level=rel_ctx.trust_level,
+            consent_passed=True,  # vetoes already cleared
+        )
+        archetype_prefs = repos.get_archetype_preferences_for_pair(
+            self._storage, owner_id=self.owner_id, contact_id=thread.contact_id,
+        )
+        archetype_choice = select_archetype(
+            posture_choice.posture,
+            resonance,
+            trust_level=rel_ctx.trust_level,
+            archetype_preferences=archetype_prefs,
+        )
+
+        decision_reason = (
+            f"proactive thread={thread.id}; "
+            f"posture={posture_choice.posture.value} — {posture_choice.reason}; "
+            f"archetype={archetype_choice.archetype.value} — {archetype_choice.reason}"
+        )
+
+        moral_pre = moral_check(posture_choice.posture, archetype_choice.archetype, resonance)
+        if moral_pre.hard_block or posture_choice.posture == Posture.SILENCE:
+            return Composition(
+                text="",
+                posture=Posture.SILENCE,
+                archetype=archetype_choice.archetype,
+                resonance=resonance,
+                decision_reason=f"{decision_reason}; blocked: {moral_pre.block_reason or 'silence posture'}",
+                moral_check_passed=not moral_pre.hard_block,
+                fallback_invoked=False,
+                created_at=datetime.now(timezone.utc),
+            )
+
+        # Use thread.title + summary as the "incoming text" for the composer
+        # — that's the carried concern we're reaching back to.
+        thread_prompt = (
+            f"the thread we're returning to: {thread.title}\n"
+            f"summary: {thread.summary}"
+        )
+
+        text = await compose(
+            self.llm_client,
+            model=self.model,
+            posture=posture_choice.posture,
+            archetype=archetype_choice.archetype,
+            resonance=resonance,
+            incoming_text=thread_prompt,
+            constraints=moral_pre.constraints,
+            generalized_facts=[thread.title, thread.summary],
+            language_hint=self.default_language_hint,
+            learned_style=self._learned_style_for_pair(thread.contact_id),
+        )
+
+        audit = audit_output(text)
+        if not audit.passed and text:
+            stricter = list(moral_pre.constraints) + [
+                f"the previous attempt violated: {', '.join(audit.violations)}",
+            ]
+            text = await compose(
+                self.llm_client,
+                model=self.model,
+                posture=posture_choice.posture,
+                archetype=archetype_choice.archetype,
+                resonance=resonance,
+                incoming_text=thread_prompt,
+                constraints=stricter,
+                generalized_facts=[thread.title, thread.summary],
+                language_hint=self.default_language_hint,
+                learned_style=self._learned_style_for_pair(thread.contact_id),
+                temperature=0.3,
+            )
+            audit = audit_output(text)
+
+        fallback_invoked = False
+        if not audit.passed or not text:
+            # For proactive, falling to a generic safe_fallback would be
+            # confusing — the user wasn't expecting a message. Better to
+            # stay silent.
+            text = ""
+            fallback_invoked = True
+
+        return Composition(
+            text=text,
+            posture=posture_choice.posture,
+            archetype=archetype_choice.archetype,
+            resonance=resonance,
+            decision_reason=decision_reason,
+            moral_check_passed=audit.passed and not fallback_invoked,
+            fallback_invoked=fallback_invoked,
+            created_at=datetime.now(timezone.utc),
+        )
+
+    def _build_veto_context(
+        self,
+        thread: ThreadModel,
+        trust_level: int,
+        now: datetime,
+    ) -> EvaluationContext:
+        """Construct the EvaluationContext for the veto chain (Heart core)."""
+        # Consent for this thread's category + pair
+        consent = repos.get_consent(
+            self._storage,
+            owner_id=self.owner_id,
+            category=thread.category,
+            contact_id=thread.contact_id,
+        )
+        consent_level = consent.get("level") if consent else None
+        quiet_hours = None
+        if consent and consent.get("quiet_hours_start") is not None and consent.get("quiet_hours_end") is not None:
+            quiet_hours = (consent["quiet_hours_start"], consent["quiet_hours_end"])
+
+        recent_rebuffs = repos.count_recent_rebuffs(
+            self._storage,
+            owner_id=self.owner_id,
+            contact_id=thread.contact_id,
+            since=now - timedelta(days=_REBUFF_WINDOW_DAYS),
+        )
+
+        # attempts_today: count care_decisions in last 24h for this thread
+        atts = self._storage.execute(
+            """
+            SELECT COUNT(*) AS n FROM care_decisions
+            WHERE thread_id = ? AND created_at >= ?
+            """,
+            (thread.id, (now - timedelta(hours=24)).isoformat()),
+        ).fetchone()
+        attempts_today = int(atts["n"]) if atts else 0
+
+        return EvaluationContext(
+            now=now,
+            owner_id=self.owner_id,
+            contact_id=thread.contact_id,
+            consent_level=consent_level,
+            quiet_hours=quiet_hours,
+            trust_level=trust_level,
+            owner_in_crisis_mode=False,  # v0.2 wires this through owner state
+            recent_rebuffs_count=recent_rebuffs,
+            attempts_today=attempts_today,
+        )
 
     # ═══════════════════════════════════════════════════════════════════════
     # Feedback — close-the-loop (1L)
@@ -544,6 +841,46 @@ class Engine:
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers for thread creation
 # ─────────────────────────────────────────────────────────────────────────────
+
+def _row_to_thread_model(row: dict) -> ThreadModel:
+    """Convert a threads-table row (dict) into a Pydantic ThreadModel.
+
+    Used by tick() to feed the veto/scoring layer which expects the
+    Thread pydantic class.
+    """
+    def _parse_ts(v: object) -> Optional[datetime]:
+        if not v:
+            return None
+        if isinstance(v, datetime):
+            return v
+        try:
+            return datetime.fromisoformat(str(v))
+        except ValueError:
+            return None
+
+    expires_at = _parse_ts(row.get("expires_at")) or datetime.now(timezone.utc)
+    return ThreadModel(
+        id=row["id"],
+        owner_id=row["owner_id"],
+        contact_id=row["contact_id"],
+        category=row["category"],
+        type=ThreadType(row["type"]),
+        title=row["title"],
+        summary=row["summary"],
+        emotional_state=row.get("emotional_state"),
+        emotional_weight=float(row.get("emotional_weight") or 0.5),
+        sensitivity=Sensitivity(row.get("sensitivity") or "medium"),
+        importance=float(row.get("importance") or 0.5),
+        source_message_id=row.get("source_message_id"),
+        followup_after=_parse_ts(row.get("followup_after")),
+        expires_at=expires_at,
+        max_attempts=int(row.get("max_attempts") or 1),
+        attempts_count=int(row.get("attempts_count") or 0),
+        last_attempt_at=_parse_ts(row.get("last_attempt_at")),
+        status=ThreadStatus(row.get("status") or "open"),
+        created_at=_parse_ts(row.get("created_at")) or datetime.now(timezone.utc),
+    )
+
 
 def _thread_type_from_experience(exp) -> str:
     """Map ExperienceReading → thread type string for the threads table."""
