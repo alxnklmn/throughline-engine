@@ -44,32 +44,57 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Optional, Union
 
-# pysqlcipher3 is imported LAZILY in _load_sqlcipher() — that way importing
+# SQLCipher is imported LAZILY in _load_sqlcipher() — that way importing
 # throughline.storage at module load works on developer machines without
 # libsqlcipher installed (so the Heart core type/veto/scoring code can be
 # tested in isolation). The error is raised when an actual encrypted DB is
 # opened, with full install instructions — not at import time.
+#
+# Two backends supported, tried in this order:
+#   1. sqlcipher3-binary — recommended (precompiled wheel, no gcc needed)
+#   2. pysqlcipher3 — legacy fallback (source-only, requires libsqlcipher-dev
+#      + gcc at install time; last PyPI release was 2018 and it does not
+#      build on Python 3.12). Kept for backwards compatibility with existing
+#      installs.
+# Both expose the same DB-API 2.0 interface so the rest of this module is
+# backend-agnostic.
 _sqlcipher = None
 
 
 def _load_sqlcipher():
-    """Import pysqlcipher3 on first use. Raises with install hints if missing."""
+    """Import SQLCipher backend on first use. Raises with install hints if missing.
+
+    Tries sqlcipher3-binary first (no compilation needed), falls back to
+    pysqlcipher3. Either provides the same DB-API 2.0 surface that this
+    module uses.
+    """
     global _sqlcipher
     if _sqlcipher is not None:
         return _sqlcipher
+    # 1. Try the modern, precompiled sqlcipher3 wheel.
+    try:
+        from sqlcipher3 import dbapi2 as sqlcipher  # type: ignore[import-untyped]
+        _sqlcipher = sqlcipher
+        return sqlcipher
+    except ImportError:
+        pass
+    # 2. Fall back to legacy pysqlcipher3.
     try:
         from pysqlcipher3 import dbapi2 as sqlcipher  # type: ignore[import-untyped]
+        _sqlcipher = sqlcipher
+        return sqlcipher
     except ImportError as exc:
         raise ImportError(
             "Anima requires SQLCipher at runtime (Invariant I-3, SPEC.md §3). "
-            "Install pysqlcipher3:\n"
-            "  pip install pysqlcipher3\n"
-            "On macOS you may need `brew install sqlcipher` first.\n"
-            "On Debian/Ubuntu: `apt install libsqlcipher-dev`.\n"
+            "Install ONE of:\n"
+            "  pip install sqlcipher3-binary  # recommended — precompiled wheel\n"
+            "  pip install pysqlcipher3       # legacy — needs libsqlcipher-dev + gcc\n"
+            "On macOS, the binary wheel works out of the box; if you must use "
+            "pysqlcipher3, `brew install sqlcipher` first.\n"
+            "On Debian/Ubuntu, sqlcipher3-binary needs no system deps; "
+            "pysqlcipher3 needs `apt install libsqlcipher-dev`.\n"
             "Plaintext SQLite is NOT a valid Anima configuration."
         ) from exc
-    _sqlcipher = sqlcipher
-    return sqlcipher
 
 
 # ─────────────────────────────────────────────────────────────────────────────

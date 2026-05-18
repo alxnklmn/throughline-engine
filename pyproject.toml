@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "throughline"
-version = "0.1.0a1"
+version = "0.1.0a2"
 description = "Anima — an engine of human continuity and presence for AI assistants."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -24,7 +24,10 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-    "pysqlcipher3 >= 1.2.0",
+    # SQLCipher backend — precompiled wheel, no gcc/libsqlcipher needed.
+    # Drop-in DB-API 2.0 compatible with the legacy `pysqlcipher3` which
+    # storage.py also accepts as a fallback if this one is unavailable.
+    "sqlcipher3-binary >= 0.5.4",
     "pydantic >= 2.0",
     "python-dateutil >= 2.8",
 ]
