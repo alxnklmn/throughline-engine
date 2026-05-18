@@ -66,6 +66,12 @@ from throughline.moral import (
     safe_fallback,
 )
 from throughline.posture import select_posture
+from throughline.repair import (
+    maybe_advance_lifecycle,
+    observe_rebuff_as_mistake,
+    record_first_message_event,
+    record_mistake_with_lesson,
+)
 from throughline.resonance import read_resonance
 from throughline.scoring import compute_score
 from throughline.storage import KeySource, SqlcipherStorage, open_storage
@@ -174,6 +180,24 @@ class Engine:
             timestamp=ts,
             char_count=len(text) if text else 0,
         )
+
+        # Record first-message relationship event if this is the first ever
+        # message in this pair. Idempotent — no-op on subsequent calls.
+        try:
+            record_first_message_event(
+                self._storage,
+                owner_id=self.owner_id,
+                contact_id=contact_id,
+            )
+        except Exception:
+            log.warning("observe_message: first_message event record failed", exc_info=True)
+
+        # Check lifecycle advancement after every observation. Cheap
+        # idempotent — advances at most once (birth → bonding).
+        try:
+            maybe_advance_lifecycle(self._storage, owner_id=self.owner_id, now=ts)
+        except Exception:
+            log.warning("observe_message: lifecycle check failed", exc_info=True)
 
         # Steps 2-3: experience capture + thread extraction.
         # We skip if LLM client is missing or host opted out.
@@ -717,11 +741,66 @@ class Engine:
         feedback_type: FeedbackType,
         raw_signal: Optional[str] = None,
     ) -> None:
+        """Persist feedback for a previously-emitted Decision.
+
+        Side effects:
+        - REBUFFED → auto-record an ``agent_mistake`` entry with default
+          lesson "owner rebuffed an initiative — the moment or framing
+          was wrong" (synthetic.derive_state will see this and increase
+          restraint for the next decisions).
+        - APPRECIATED + multiple times → may eventually bump bond_level
+          (host-driven; not auto-bumped here to keep this side-effect-free
+          beyond the rebuff path).
+        """
         repos.record_feedback(
             self._storage,
             decision_id=decision_id,
             feedback_type=feedback_type.value,
             raw_signal=raw_signal,
+        )
+
+        if feedback_type == FeedbackType.REBUFFED:
+            # Find the decision's thread → contact pair (for the mistake's
+            # contact_id field) and record a mistake.
+            decision = repos.get_care_decision(self._storage, decision_id)
+            if decision:
+                thread = repos.get_thread(self._storage, decision["thread_id"])
+                contact_id = thread["contact_id"] if thread else None
+                try:
+                    observe_rebuff_as_mistake(
+                        self._storage,
+                        owner_id=self.owner_id,
+                        contact_id=contact_id,
+                        decision_id=decision_id,
+                        raw_signal=raw_signal,
+                    )
+                except Exception:
+                    log.exception("record_feedback: auto-mistake failed")
+
+    def record_mistake(
+        self,
+        *,
+        mistake_summary: str,
+        lesson: str,
+        behavior_update: str,
+        contact_id: Optional[str] = None,
+        user_feedback: Optional[str] = None,
+    ) -> str:
+        """Host-driven explicit mistake recording. Use when an out-of-band
+        signal tells you the agent got it wrong with named detail."""
+        return record_mistake_with_lesson(
+            self._storage,
+            owner_id=self.owner_id,
+            mistake_summary=mistake_summary,
+            lesson=lesson,
+            behavior_update=behavior_update,
+            contact_id=contact_id,
+            user_feedback=user_feedback,
+        )
+
+    def list_recent_mistakes(self, *, limit: int = 20) -> list[dict]:
+        return repos.list_recent_mistakes(
+            self._storage, owner_id=self.owner_id, limit=limit,
         )
 
     # ═══════════════════════════════════════════════════════════════════════
