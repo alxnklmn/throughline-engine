@@ -117,6 +117,7 @@ class Engine:
         llm_client: Optional[LLMClient] = None,
         model: str = "gpt-4o-mini",
         default_language_hint: str = "ru",
+        memory_security: bool = False,
     ) -> None:
         if not owner_id:
             raise ValueError("owner_id is required")
@@ -125,7 +126,9 @@ class Engine:
         self.model = model
         self.default_language_hint = default_language_hint
 
-        self._storage = open_storage(storage_path, key_source)
+        self._storage = open_storage(
+            storage_path, key_source, memory_security=memory_security,
+        )
         repos.ensure_owner(self._storage, owner_id)
         repos.ensure_lifecycle(self._storage, owner_id)
 

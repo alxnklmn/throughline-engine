@@ -411,6 +411,19 @@ class SqlcipherStorage:
         key_source: How to resolve the encryption key. See module docstring.
         kdf_iter: SQLCipher KDF iteration count. SQLCipher 4 default is
             256000; we expose it for tests that want faster setup.
+        memory_security: when True, sets ``PRAGMA cipher_memory_security =
+            ON``, which makes SQLCipher mlock() sensitive pages so secrets
+            cannot leak to swap. This is defence-in-depth for the *in-memory*
+            threat — it is NOT part of Invariant I-3 (encryption *at rest*
+            is provided by ``PRAGMA key`` regardless of this flag).
+
+            ``mlock()`` requires the process to hold ``CAP_IPC_LOCK`` or a
+            sufficient ``RLIMIT_MEMLOCK``. In most containers neither is
+            granted, so SQLCipher emits one ``mlock() returned -1 errno=12``
+            warning per locked page — a noisy, non-fatal flood. We therefore
+            default this OFF. Production deployments that grant the
+            container ``cap_add: [IPC_LOCK]`` and raise the memlock ulimit
+            SHOULD pass ``memory_security=True`` to enable the hardening.
     """
 
     def __init__(
@@ -419,11 +432,13 @@ class SqlcipherStorage:
         key_source: KeySource,
         *,
         kdf_iter: int = 256000,
+        memory_security: bool = False,
     ) -> None:
         self.path = Path(path).expanduser()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._key = resolve_key(key_source)
         self._kdf_iter = kdf_iter
+        self._memory_security = memory_security
         self._conn = self._open()
         # Restrict file perms — even though file is encrypted, leaking the
         # ciphertext to other local users is worse than not.
@@ -452,7 +467,11 @@ class SqlcipherStorage:
             cur.execute(f"PRAGMA key = '{safe}'")
         cur.execute(f"PRAGMA kdf_iter = {self._kdf_iter}")
         cur.execute("PRAGMA cipher_page_size = 4096")
-        cur.execute("PRAGMA cipher_memory_security = ON")
+        # In-memory hardening (mlock). Off by default — requires CAP_IPC_LOCK
+        # / memlock ulimit, otherwise SQLCipher floods errno=12 warnings.
+        # At-rest encryption (I-3) does NOT depend on this.
+        if self._memory_security:
+            cur.execute("PRAGMA cipher_memory_security = ON")
         # Validate by reading one byte of header. If the key is wrong this
         # raises with a "file is not a database" message.
         try:
@@ -544,8 +563,16 @@ def open_storage(
     key_source: KeySource,
     *,
     kdf_iter: int = 256000,
+    memory_security: bool = False,
 ) -> SqlcipherStorage:
-    """Open and initialize an encrypted Anima database in one call."""
-    storage = SqlcipherStorage(path, key_source, kdf_iter=kdf_iter)
+    """Open and initialize an encrypted Anima database in one call.
+
+    ``memory_security`` defaults False — see SqlcipherStorage docstring for
+    the CAP_IPC_LOCK requirement and why at-rest encryption (I-3) is
+    independent of it.
+    """
+    storage = SqlcipherStorage(
+        path, key_source, kdf_iter=kdf_iter, memory_security=memory_security,
+    )
     storage.init_schema()
     return storage
