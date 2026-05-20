@@ -46,6 +46,22 @@ class TestPainRouting:
         c = select_posture(r, _state(r), trust_level=3, consent_passed=True)
         assert c.posture == Posture.HOLD
 
+    def test_anxiety_routes_to_hold(self):
+        # Live-test discovery (v0.1.0a5): resonance prompt is conservative
+        # ("anxiety over panic"), so panic-flavored real messages land as
+        # ANXIETY. Without HOLD on ANXIETY, replies became structure-first
+        # for panicking users — exactly what §10 HOLD warns against.
+        r = _reso(Pain.ANXIETY, Sensitivity.MEDIUM)
+        c = select_posture(r, _state(r), trust_level=3, consent_passed=True)
+        assert c.posture == Posture.HOLD
+
+    def test_overload_routes_to_hold(self):
+        # §8.3: OVERLOAD prescription is "externalize the load" — opposite of
+        # piling on structure. HOLD opens space; GUIDE would add another item.
+        r = _reso(Pain.OVERLOAD, Sensitivity.MEDIUM)
+        c = select_posture(r, _state(r), trust_level=3, consent_passed=True)
+        assert c.posture == Posture.HOLD
+
 
 class TestCollapse:
     def test_confusion_mirror_collapses_to_hold(self):

@@ -70,10 +70,20 @@ class PostureChoice:
 
 
 # Pains that mandate HOLD when present (override structure-defaults).
+# Aligned with SPEC.md §8.3 pain prescriptions — every form whose prescription
+# is "ground first / reduce scope / no structure yet" belongs here.
+#
+# Note on ANXIETY vs PANIC: the Resonance prompt is intentionally conservative
+# ("anxiety over panic"), so panic-flavored real messages frequently land as
+# ANXIETY. Without ANXIETY in this set, _raw_select fell through to GUIDE,
+# which led to structure-first replies for users who were panicking — exactly
+# what §10 HOLD warns against. Live-test discovery, v0.1.0a5.
 _HOLD_PAINS: frozenset[Pain] = frozenset({
     Pain.FEAR,
     Pain.PANIC,
     Pain.SHAME,
+    Pain.ANXIETY,      # §8.3: "reduction of scope; immediate ground"
+    Pain.OVERLOAD,     # §8.3: "externalize the load"
 })
 
 # Pains that mandate WITNESS (in v0.1 collapsed to HOLD).
