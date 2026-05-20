@@ -74,6 +74,7 @@ from throughline.repair import (
 )
 from throughline.resonance import read_resonance
 from throughline.scoring import compute_score
+from throughline.voice import calibrate_voice as _calibrate_voice
 from throughline.storage import KeySource, SqlcipherStorage, open_storage
 from throughline.synthetic import RelationshipContext, derive_state
 from throughline.types import (
@@ -857,6 +858,33 @@ class Engine:
         """Dominant voice style learned for this user, if any."""
         lc = repos.ensure_lifecycle(self._storage, self.owner_id)
         return lc.get("dominant_style")
+
+    async def calibrate_voice(self, samples: list[str]) -> str:
+        """Extract a voice signature from owner-provided message samples
+        and persist it on agent_lifecycle.dominant_style.
+
+        Privacy: the host is responsible for pulling samples from a single
+        channel (per-relationship isolation, I-1). The engine itself does
+        not store message content, so this method takes samples as input
+        rather than reading them from storage.
+
+        Returns the signature string (also stored). Returns "" on failure
+        or insufficient input.
+        """
+        if not self.llm_client:
+            raise RuntimeError(
+                "Engine.calibrate_voice requires llm_client; pass one to Engine()"
+            )
+        sig = await _calibrate_voice(
+            samples, client=self.llm_client, model=self.model,
+        )
+        if sig:
+            repos.set_dominant_style(self._storage, self.owner_id, sig)
+            log.info(
+                "voice: calibrated for owner=%s (%d chars)",
+                self.owner_id, len(sig),
+            )
+        return sig
 
     def export_owner_data(self) -> dict[str, Any]:
         return repos.export_owner_data(self._storage, self.owner_id)

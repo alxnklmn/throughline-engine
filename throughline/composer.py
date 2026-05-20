@@ -108,6 +108,44 @@ _ARCHETYPE_VOICE: dict[Archetype, str] = {
 }
 
 
+# Anti-AI-tells baseline (adapted from the humanizer skill,
+# https://github.com/blader/humanizer, MIT-licensed; ultimately rooted in
+# Wikipedia's "Signs of AI writing" guide). The full humanizer covers 28
+# pattern categories, most of which are about Wikipedia-style essays. The
+# subset below is the chat-relevant slice that actually leaks into 1-3
+# sentence agent replies. See research/voice-calibration-adaptation.md for
+# the selection rationale.
+_BASELINE_STYLE_DONTS: list[str] = [
+    # Signposting / meta-announcements ("let's dive in", "давай разберём")
+    "do NOT announce what you are about to do. no 'let's break this down', "
+    "'давай разберём', 'итак', 'now let's look at'. just say it.",
+    # Sycophancy / servile openers
+    "do NOT use sycophantic openers. no 'great question!', 'отличный вопрос!', "
+    "'прекрасная мысль!', 'you're absolutely right!'.",
+    # Rule-of-three padding
+    "do NOT force lists of three when two suffice. 'briefly and warmly' beats "
+    "'briefly, warmly, and supportively'.",
+    # Hyphenated-pair overuse (typical AI compound modifier stack)
+    "do NOT pile hyphenated compound modifiers (cross-functional, data-driven, "
+    "high-quality, decision-making, real-time). use plain phrasing.",
+    # Em-dash overuse
+    "do NOT use em dashes as a tic. commas, periods, or parentheses are usually "
+    "better. one em dash in a short message is the maximum.",
+    # Generic positive closers
+    "do NOT close with empty positivity. no 'у тебя всё получится!', "
+    "'exciting times ahead', 'everything will be alright'. specifics > slogans.",
+    # Inflated significance (a.k.a. the 'testament' problem)
+    "do NOT inflate significance. no 'testament', 'pivotal moment', 'landscape', "
+    "'underscores the importance', 'reflects a broader shift'.",
+    # Copula avoidance ("serves as / stands as / boasts" instead of "is/has")
+    "prefer plain 'is' / 'has' / 'does'. avoid 'serves as', 'stands as', "
+    "'boasts', 'represents a' as substitutes for simple verbs.",
+    # Vague attributions
+    "do NOT cite vague authorities. no 'experts say', 'studies show', "
+    "'observers note'. if you don't have a specific source, drop the claim.",
+]
+
+
 def build_system_prompt(
     *,
     posture: Posture,
@@ -159,6 +197,10 @@ def build_system_prompt(
     # Learned per-user voice (optional)
     if learned_style:
         parts.append(f"learned voice for this user:\n{learned_style.strip()[:600]}")
+
+    # Anti-AI-tells baseline (voice quality — separate from moral constraints).
+    style_bullets = "\n".join(f"- {c}" for c in _BASELINE_STYLE_DONTS)
+    parts.append("style (sound human, not generated):\n" + style_bullets)
 
     # Moral-layer constraints (CRITICAL: these are negative instructions)
     if constraints:

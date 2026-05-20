@@ -636,6 +636,33 @@ def advance_lifecycle_stage(
     )
 
 
+def set_dominant_style(
+    storage: SqlcipherStorage, owner_id: str, style: str
+) -> None:
+    """Persist the learned voice signature for this owner.
+
+    Stored on ``agent_lifecycle.dominant_style``; folded into composer
+    prompts automatically via ``Engine._learned_style_for_pair``. The
+    string is owner-scoped only (per-pair customisation is v0.2+).
+    """
+    ensure_lifecycle(storage, owner_id)
+    now = _iso(_now())
+    storage.execute(
+        """
+        UPDATE agent_lifecycle
+        SET dominant_style = ?, last_reflection_at = ?
+        WHERE owner_id = ?
+        """,
+        (style or None, now, owner_id),
+    )
+    append_audit(
+        storage,
+        owner_id=owner_id,
+        action="voice_calibrated",
+        detail=f"signature_chars={len(style or '')}",
+    )
+
+
 def adjust_bond_level(
     storage: SqlcipherStorage, owner_id: str, delta: int
 ) -> int:
