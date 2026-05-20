@@ -88,3 +88,55 @@ class TestInvariant:
             r = ResonanceReading(deeper_pain=pain, sensitivity=sens)
             c = select_posture(r, derive_state(r, ctx), trust_level=trust, consent_passed=True)
             assert c.posture in V0_1_POSTURES, (c.posture, c.raw_posture, pain, sens, trust)
+
+
+class TestReactiveSuppressesRestraintSilence:
+    """In reactive context (user just messaged), silence-by-default is wrong.
+    Only critical-sensitivity still silences (so host surfaces resources).
+    Restraint > 0.7 and protectiveness > 0.8 must NOT silence in reactive."""
+
+    def test_reactive_skips_prefers_silence(self):
+        # Build a state where proactive WOULD silence (e.g., shame with high
+        # sensitivity raises restraint past 0.7). In reactive, posture must
+        # land on HOLD (pain-driven), not SILENCE.
+        r = _reso(Pain.SHAME, Sensitivity.HIGH)
+        state = _state(r)
+        # confirm prof posture-side silence intent in proactive
+        proactive = select_posture(r, state, trust_level=3, consent_passed=True)
+        assert proactive.posture == Posture.SILENCE
+        # reactive must pick HOLD (or another speaking posture) instead
+        reactive = select_posture(
+            r, state, trust_level=3, consent_passed=True, reactive=True,
+        )
+        assert reactive.posture != Posture.SILENCE
+        assert reactive.posture == Posture.HOLD
+
+    def test_reactive_critical_still_silences(self):
+        # critical sensitivity MUST keep silencing — host surfaces resources
+        r = _reso(Pain.PANIC, Sensitivity.CRITICAL)
+        c = select_posture(
+            r, _state(r), trust_level=3, consent_passed=True, reactive=True,
+        )
+        assert c.posture == Posture.SILENCE
+        assert "critical" in c.reason.lower()
+
+    def test_reactive_protectiveness_high_falls_to_hold(self):
+        # crisis-mode pushes protectiveness > 0.8; in proactive that becomes
+        # PROTECT → collapses to SILENCE; in reactive it should land in HOLD
+        # (presence without engaging the harmful path)
+        r = _reso(Pain.FEAR, Sensitivity.HIGH)
+        state = _state(r, owner_in_crisis_mode=True)
+        c = select_posture(
+            r, state, trust_level=3, consent_passed=True, reactive=True,
+        )
+        # crisis_mode also raises restraint, so reactive suppresses that too;
+        # the protectiveness>0.8 branch maps to HOLD in reactive
+        assert c.posture == Posture.HOLD
+
+    def test_reactive_chat_still_guide(self):
+        # ordinary chat in reactive — same default GUIDE as proactive
+        r = _reso(Pain.NONE, Sensitivity.LOW)
+        c = select_posture(
+            r, _state(r), trust_level=3, consent_passed=True, reactive=True,
+        )
+        assert c.posture == Posture.GUIDE

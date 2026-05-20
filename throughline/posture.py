@@ -96,6 +96,7 @@ def select_posture(
     *,
     trust_level: int,
     consent_passed: bool,
+    reactive: bool = False,
     apply_v0_1_collapse: bool = True,
 ) -> PostureChoice:
     """Pick the posture for this moment.
@@ -107,6 +108,14 @@ def select_posture(
         consent_passed: True if the veto chain already cleared this call.
             If False (only for reactive cycle without veto check), some
             options stay unavailable.
+        reactive: True when the user just addressed the agent directly
+            (compose_response path). In reactive mode, silence-by-default
+            is wrong — the user is present and expects a reply.
+            Restraint-driven and protectiveness-driven SILENCE are
+            suppressed; only critical-sensitivity still silences (so the
+            host can surface external crisis resources). The proactive
+            tick uses the default ``reactive=False`` — silence is the
+            right default there (SPEC.md §12 Silence Correctness).
         apply_v0_1_collapse: when True (default), collapse unavailable
             postures into v0.1 active set per the table. Set False to see
             the raw algorithmic choice (used by tests + transparency UI).
@@ -115,7 +124,7 @@ def select_posture(
         PostureChoice with .posture being the value to ACT on, and
         .raw_posture being the algorithm's true choice.
     """
-    raw, reason = _raw_select(resonance, state, trust_level=trust_level)
+    raw, reason = _raw_select(resonance, state, trust_level=trust_level, reactive=reactive)
     if apply_v0_1_collapse and raw not in V0_1_POSTURES:
         active = _V0_1_COLLAPSE.get(raw, Posture.GUIDE)
         collapsed = True
@@ -143,24 +152,41 @@ def _raw_select(
     state: SyntheticState,
     *,
     trust_level: int,
+    reactive: bool = False,
 ) -> tuple[Posture, str]:
     """The full 7-posture selection algorithm (SPEC.md §10.2).
 
     Returns (posture, short reason string). Order is deliberate — each
     branch represents a value claim about when this posture is right.
+
+    ``reactive`` (compose_response context): the user addressed the agent
+    directly. Steps 2 (restraint→SILENCE) and 3 (protectiveness→PROTECT,
+    which collapses to SILENCE in v0.1) are skipped — silence is not a
+    valid reply to a present user. Critical-sensitivity still silences
+    (step 1) so the host can surface external resources; PROTECT logic
+    that would compose a refusal still applies in step 3'.
     """
     # 1. Critical sensitivity → SILENCE unless we have explicit guidance.
     # Crisis-territory: agent does not compose its own advice. Host surfaces
-    # external resources.
+    # external resources. This holds in BOTH reactive and proactive.
     if resonance.sensitivity == Sensitivity.CRITICAL:
         return Posture.SILENCE, "critical sensitivity — host must surface external resources"
 
-    # 2. State-level silence preference.
-    if prefers_silence(state):
+    # 2. State-level silence preference. PROACTIVE only — in reactive the
+    # user is present and silence is a non-answer.
+    if not reactive and prefers_silence(state):
         return Posture.SILENCE, "restraint > threshold; silence is the right default"
 
-    # 3. Protectiveness dominates → PROTECT (v0.1 collapses to SILENCE).
+    # 3. Protectiveness dominates. In PROACTIVE v0.1, PROTECT collapses to
+    # SILENCE (better not to compose). In REACTIVE we still want a reply,
+    # just a protective one — PROTECT raw will collapse to SILENCE in v0.1
+    # collapse table by default, but reactive callers can re-collapse to
+    # HOLD via apply_v0_1_collapse=False handling at the call site, or we
+    # short-circuit to HOLD here in reactive (presence without engaging
+    # the harmful path). v0.2 will compose proper PROTECT text.
     if state.protectiveness > 0.8:
+        if reactive:
+            return Posture.HOLD, "protectiveness>0.8 in reactive → hold (presence, no engagement of path)"
         return Posture.PROTECT, "protectiveness > 0.8 — refuse harmful path"
 
     # 4. Pain-driven posture (HOLD family for fear/shame/panic).

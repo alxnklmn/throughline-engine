@@ -318,12 +318,15 @@ class Engine:
         except Exception:
             log.warning("compose_response: failed to snapshot synthetic state", exc_info=True)
 
-        # Step 4: posture selection
+        # Step 4: posture selection — reactive=True suppresses
+        # restraint/protectiveness driven SILENCE; the user is present and
+        # expects a reply. critical-sensitivity still silences.
         posture_choice = select_posture(
             resonance,
             synth_state,
             trust_level=rel_ctx.trust_level,
-            consent_passed=True,  # reactive: user sent, implicit consent
+            consent_passed=True,
+            reactive=True,
         )
 
         # Step 5: archetype selection
