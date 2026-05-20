@@ -7,7 +7,7 @@ input-handling tests are deterministic.
 import asyncio
 import json
 
-from throughline.voice import calibrate_voice
+from throughline.voice import calibrate_voice, _strip_multiword_quotes
 
 
 class _FakeMessage:
@@ -104,6 +104,58 @@ class TestFailureModes:
             ["sample"], client=CrashClient(), model="t",
         ))
         assert r == ""
+
+
+class TestPrivacyStrip:
+    """Defence-in-depth: multi-word quoted fragments must be stripped.
+    Single-word vocabulary stays. v0.1.0a7 live discovery."""
+
+    def test_single_word_quotes_preserved(self):
+        s = "часто использует «просто», «ну», «вроде»"
+        assert _strip_multiword_quotes(s) == s
+
+    def test_multiword_russian_guillemet_stripped(self):
+        # The exact pattern that leaked in production
+        s = "иногда обрывает мысль («Убери скоро буду»)"
+        out = _strip_multiword_quotes(s)
+        assert "Убери" not in out
+        assert "скоро буду" not in out
+
+    def test_multiword_straight_quotes_stripped(self):
+        s = 'often says \"see you later\" instead of bye'
+        out = _strip_multiword_quotes(s)
+        assert "see you later" not in out
+
+    def test_multiword_typographic_english_stripped(self):
+        s = "пишет “I will be back soon” перед отъездами"
+        out = _strip_multiword_quotes(s)
+        assert "I will be back soon" not in out
+
+    def test_full_signature_with_mixed_quotes(self):
+        # The exact leaky production signature
+        s = (
+            "очень короткие фразы, часто команды или инструкции. "
+            "использует slash-команды («/start»). "
+            "иногда обрывает мысль («Убери скоро буду»)."
+        )
+        out = _strip_multiword_quotes(s)
+        # Single-word slash-command quote kept
+        assert "/start" in out
+        # Multi-word message quote stripped
+        assert "Убери скоро буду" not in out
+
+    def test_calibrate_returns_stripped_signature(self):
+        # End-to-end: even if LLM produces leaky output, returned signature
+        # has the multi-word quote replaced with […]
+        leaky = (
+            "короткие фразы. иногда говорит «убери скоро буду» когда уходит. "
+            "часто использует «ок»."
+        )
+        client = FakeLLMClient(json.dumps({"voice_signature": leaky}))
+        r = asyncio.run(calibrate_voice(["sample"], client=client, model="t"))
+        assert "убери скоро буду" not in r
+        # vocabulary marker preserved
+        assert "«ок»" in r
 
 
 class TestInputCap:

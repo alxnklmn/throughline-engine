@@ -32,10 +32,53 @@ Privacy:
 from __future__ import annotations
 
 import logging
+import re
 
 from throughline.llm import JSONParseFailure, LLMClient, call_json
 
 log = logging.getLogger("anima.voice")
+
+
+# Defence-in-depth against the LLM ignoring the "no quoting" instruction.
+# These patterns strip ONLY MULTI-WORD quoted fragments — single-word
+# vocabulary examples (e.g. «просто», «ну», «вроде») are legitimate signal
+# and stay. The heuristic: a quoted span containing whitespace is almost
+# certainly a verbatim message fragment, not a vocabulary marker.
+#
+# Live discovery, v0.1.0a7: the model produced
+#   «иногда обрывает мысль («Убери скоро буду»)»
+# which is a direct quote of one of the owner's messages — exactly the
+# privacy leak this layer needs to prevent before the signature is
+# persisted and folded into every composer prompt.
+_MULTIWORD_QUOTE_PATTERNS = [
+    re.compile(r"«[^»\n]*\s[^»\n]*»"),       # Russian guillemets
+    re.compile(r"“[^”\n]*\s[^”\n]*”"),   # Typographic English "..."
+    re.compile(r'"[^"\n]*\s[^"\n]*"'),       # Straight double
+    re.compile(r"'[^'\n]*\s[^'\n]*'"),       # Straight single
+]
+# Empty parens / leftover punctuation after stripping
+_EMPTY_PAREN_RE = re.compile(r"\(\s*\)|\s+,|,\s+\)|,\s*\.")
+
+
+def _strip_multiword_quotes(sig: str) -> str:
+    """Remove multi-word quoted fragments. Returns a cleaned signature.
+
+    Single-word quoted vocabulary stays (it carries actual signal about
+    the user's lexicon). Anything multi-word in quotes is treated as a
+    likely message-content leak and replaced with ``[…]`` so the rest
+    of the line still parses.
+    """
+    if not sig:
+        return sig
+    cleaned = sig
+    for pat in _MULTIWORD_QUOTE_PATTERNS:
+        cleaned = pat.sub("[…]", cleaned)
+    # Tidy leftover artefacts like "(……)" or stray commas (line-local only —
+    # signatures are multi-line and newlines carry meaning; we collapse only
+    # repeated spaces/tabs within each line)
+    cleaned = _EMPTY_PAREN_RE.sub("", cleaned)
+    cleaned = re.sub(r"[ \t]+", " ", cleaned).strip()
+    return cleaned
 
 
 VOICE_CALIBRATION_SYSTEM = """ты voice calibration analyst.
@@ -58,9 +101,19 @@ VOICE_CALIBRATION_SYSTEM = """ты voice calibration analyst.
 - НЕ описывай эмоциональное состояние / тон момента (это не голос, это состояние) — только устойчивые манерные паттерны
 - НЕ давай рекомендации («следует писать...»), только описание
 
+⚠️ КРИТИЧНО — PRIVACY ПРАВИЛО ЦИТАТ:
+никогда не цитируй фразы из сэмплов которые состоят из БОЛЕЕ ОДНОГО слова.
+- РАЗРЕШЕНО: упоминать отдельные слова-маркеры в кавычках, например
+  «использует часто слова «короче», «типа», «ну»» — это вокабуляр, не сообщения.
+- ЗАПРЕЩЕНО: цитировать фразы / куски сообщений / предложения, например
+  «иногда говорит «убери скоро буду»» — это утечка содержимого. вместо этого
+  описывай ПАТТЕРН без примера: «иногда обрывает мысль императивом».
+этот вывод записывается в БД и встраивается в каждый промпт ассистента.
+любое многословное цитирование = privacy-нарушение.
+
 формат voice_signature — короткие наблюдения, например:
 "короткие фразы, часто 4-7 слов. иногда обрывает мысль на полуслове.
-без эмодзи. lowercase почти всегда. много «короче», «типа» в начале.
+без эмодзи. lowercase почти всегда. часто использует «короче», «типа» в начале.
 тире вместо запятых. редко завершает мысль точкой — переходит дальше."
 
 это ровно тот формат который ассистент сможет встроить в свой system prompt
@@ -122,6 +175,16 @@ async def calibrate_voice(
     if not isinstance(sig, str):
         return ""
     sig = sig.strip()
+    # Defence-in-depth: strip any multi-word quoted fragments before persist.
+    # The prompt forbids them; this catches the cases where the model still
+    # produces one. Single-word vocabulary quotes are preserved.
+    cleaned = _strip_multiword_quotes(sig)
+    if cleaned != sig:
+        log.info(
+            "voice: stripped %d chars of multi-word quoted content (privacy guard)",
+            len(sig) - len(cleaned),
+        )
+    sig = cleaned
     # Hard cap on signature size — it goes into every composer prompt
     if len(sig) > 800:
         sig = sig[:800].rstrip()
